@@ -1,0 +1,9 @@
+[Plugin]
+Loader=python3
+Module=eogtricks-safer-delete
+IAge=3
+Icon=user-trash
+Name=[EOGtricks] Safer File Deletion
+Description=No instant delete keypresses. Shift+Delete now trashes the file. The Delete key does nothing.
+Authors=Andrew Chadwick <a.t.chadwick@gmail.com>
+Copyright=Copyright © 2017 Andrew Chadwick <a.t.chadwick@gmail.com>
