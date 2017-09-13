@@ -31,10 +31,10 @@ if os.environ.get("EOGTRICKS_DEBUG"):
     logging.basicConfig(level=logging.DEBUG)
 
 
-class NoDelete (GObject.Object, Eog.ApplicationActivatable):
+class NoDelete (GObject.Object, Eog.WindowActivatable):
     """Remove the insta-delete accelerator, Shift+Delete now trashes"""
 
-    app = GObject.property(type=Eog.Application)
+    window = GObject.property(type=Eog.Window)
 
     def __init__(self):
         super(NoDelete, self).__init__()
@@ -43,6 +43,10 @@ class NoDelete (GObject.Object, Eog.ApplicationActivatable):
             "win.move-trash": ["<Shift>Delete"],  # was Delete
         }
         self._old_bindings = {}
+
+    @property
+    def app(self):
+        return self.window.get_application()
 
     def do_activate(self):
         app = self.app
