@@ -1,0 +1,9 @@
+[Plugin]
+Loader=python3
+Module=eogtricks-pager
+IAge=3
+Icon=go-down
+Name=[EOGtricks] Pager
+Description=Experimental pager plugin. Space moves down by a screenful. B goes backwards by the same amounnt.
+Authors=Andrew Chadwick <a.t.chadwick@gmail.com>
+Copyright=Copyright © 2017 Andrew Chadwick <a.t.chadwick@gmail.com>
