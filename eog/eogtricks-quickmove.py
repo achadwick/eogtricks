@@ -85,11 +85,8 @@ class QuickMove(GObject.GObject, Eog.WindowActivatable):
             os.makedirs(dest)
         except OSError:
             pass
-        shutil.move(src, dest)
 
         logger.debug("Move %r → %r", src, dest)
-        store = self.window.get_store()
-        old_pos = store.get_pos_by_image(img)
 
         # If you rename the current image, the image is
         # re-inserted at its new aphabetical location, and the
@@ -97,7 +94,13 @@ class QuickMove(GObject.GObject, Eog.WindowActivatable):
         # zero. This is confusing and makes things feel really
         # inconsistent.
 
-        GLib.idle_add(self._set_current_idle_cb, old_pos)
+        store = self.window.get_store()
+        old_pos = store.get_pos_by_image(img)
+        view = self.window.get_thumb_view()
+        img2 = store.get_image_by_pos(old_pos+1)
+        view.set_current_image(img2, True)
+
+        shutil.move(src, dest)
 
     def _new_activated_cb(self, action, param):
         dialog = Gtk.FileChooserDialog("Choose new target directory", self.window,
@@ -127,13 +130,4 @@ class QuickMove(GObject.GObject, Eog.WindowActivatable):
             raise
         finally:
             dialog.destroy()
-
-    def _set_current_idle_cb(self, old_pos):
-        # Keeps the cursor position in the sequence at +1/0/-1 away
-        # from its previous position.
-        view = self.window.get_thumb_view()
-        store = self.window.get_store()
-        img = store.get_image_by_pos(old_pos)
-        view.set_current_image(img, True)
-        return False
 
