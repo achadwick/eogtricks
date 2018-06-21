@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import re
 import os
+import shutil
 import logging
 
 from gi.repository import Eog
@@ -36,46 +37,67 @@ if os.environ.get("EOGTRICKS_DEBUG"):
 
 class QuickMove(GObject.GObject, Eog.WindowActivatable):
 
-    ACTION_NAME = "new-quick-move-folder"
+    ACTION_NEW_NAME = "new-quick-move-folder"
+    ACTION_MOVE_NAME = "do-quick-move"
 
     window = GObject.property(type=Eog.Window)
+    folder = None # os.path.expanduser('~')
 
     def __init__(self):
         super().__init__()
-        self.action_new = Gio.SimpleAction(name=self.ACTION_NAME)
+        self.action_new = Gio.SimpleAction(name=self.ACTION_NEW_NAME)
+        self.action_move = Gio.SimpleAction(name=self.ACTION_MOVE_NAME)
         self.action_new.connect("activate", self._new_activated_cb)
+        self.action_move.connect("activate", self._move_activated_cb)
 
     def do_activate(self):
-        logger.debug("Activated. Adding action win.%s", self.ACTION_NAME)
+        logger.debug("Activated. Adding action win.%s", self.ACTION_NEW_NAME)
+        logger.debug("Activated. Adding action win.%s", self.ACTION_MOVE_NAME)
         self.window.add_action(self.action_new)
+        self.window.add_action(self.action_move)
         app = self.window.get_application()
-        app.set_accels_for_action( "win." + self.ACTION_NAME, ['N'], )
-        self.window.get_titlebar().set_subtitle("/home/floe/")
+        app.set_accels_for_action( "win." + self.ACTION_NEW_NAME, ['N'], )
+        app.set_accels_for_action( "win." + self.ACTION_MOVE_NAME, ['M'], )
+        self.window.get_titlebar().set_subtitle("Target: None")
 
     def do_deactivate(self):
-        logger.debug("Deactivated. Removing action win.%s", self.ACTION_NAME)
-        self.window.remove_action(self.ACTION_NAME)
+        logger.debug("Deactivated. Removing action win.%s", self.ACTION_NEW_NAME)
+        logger.debug("Deactivated. Removing action win.%s", self.ACTION_MOVE_NAME)
+        self.window.remove_action(self.ACTION_NEW_NAME)
+        self.window.remove_action(self.ACTION_MOVE_NAME)
 
     def _move_activated_cb(self, action, param):
+        if not self.folder:
+            return
+
         img = self.window.get_image()
         if not img:
             return
         if not img.is_file_writable():
             return
 
-        if new_edit_name != orig_edit_name:
-            logger.debug("Rename %r → %r", orig_edit_name, new_edit_name)
-            store = self.window.get_store()
-            old_pos = store.get_pos_by_image(img)
-            file.set_display_name(new_edit_name)
+        src = img.get_file().get_path()
+        name = os.path.basename(src)
+        dest = self.folder
 
-            # If you rename the current image, the image is
-            # re-inserted at its new aphabetical location, and the
-            # UI's idea of the current image resets to position
-            # zero. This is confusing and makes things feel really
-            # inconsistent.
+        # Create directory if it doesn't exist.
+        try:
+            os.makedirs(dest)
+        except OSError:
+            pass
+        shutil.move(src, dest)
 
-            GLib.idle_add(self._set_current_idle_cb, old_pos)
+        logger.debug("Move %r → %r", src, dest)
+        store = self.window.get_store()
+        old_pos = store.get_pos_by_image(img)
+
+        # If you rename the current image, the image is
+        # re-inserted at its new aphabetical location, and the
+        # UI's idea of the current image resets to position
+        # zero. This is confusing and makes things feel really
+        # inconsistent.
+
+        GLib.idle_add(self._set_current_idle_cb, old_pos)
 
     def _new_activated_cb(self, action, param):
         dialog = Gtk.FileChooserDialog("Choose new target directory", self.window,
@@ -83,8 +105,11 @@ class QuickMove(GObject.GObject, Eog.WindowActivatable):
             (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             Gtk.STOCK_OPEN, Gtk.ResponseType.OK))
 
+        if not self.folder:
+            self.folder = os.path.expanduser('~')
+
         dialog.set_local_only(True)
-        dialog.set_current_folder(self.window.get_titlebar().get_subtitle())
+        dialog.set_current_folder(self.folder)
         dialog.set_position(Gtk.WindowPosition.MOUSE)
         dialog.set_default_response(Gtk.ResponseType.OK)
  
@@ -94,9 +119,9 @@ class QuickMove(GObject.GObject, Eog.WindowActivatable):
             if response != Gtk.ResponseType.OK:
                 return
 
-            newfolder = dialog.get_filename()
+            self.folder = dialog.get_filename()
             tb = self.window.get_titlebar()
-            tb.set_subtitle(newfolder)
+            tb.set_subtitle("Target: "+self.folder)
 
         except:
             raise
@@ -112,8 +137,3 @@ class QuickMove(GObject.GObject, Eog.WindowActivatable):
         view.set_current_image(img, True)
         return False
 
-#    def _print_accels(self):
-#        app = self.window.get_application()
-#        for detailed_name in app.list_action_descriptions():
-#            print(detailed_name, end=", ")
-#            print(app.get_accels_for_action(detailed_name))
