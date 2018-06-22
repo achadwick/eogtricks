@@ -78,8 +78,11 @@ class QuickMove(GObject.GObject, Eog.WindowActivatable):
             return
 
         src = img.get_file().get_path()
-        name = os.path.basename(src)
+        srcdir = os.path.dirname(src)
         dest = self.folder
+
+        if srcdir == dest:
+            return
 
         # Create directory if it doesn't exist.
         try:
@@ -96,6 +99,7 @@ class QuickMove(GObject.GObject, Eog.WindowActivatable):
         store = self.window.get_store()
         old_pos = store.get_pos_by_image(img)
         view = self.window.get_thumb_view()
+
         logger.debug("Adjusting view position to %d", old_pos+1)
         img2 = store.get_image_by_pos(old_pos+1)
         view.set_current_image(img2, True)
