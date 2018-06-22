@@ -109,11 +109,10 @@ class QuickMove(GObject.GObject, Eog.WindowActivatable):
             (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             Gtk.STOCK_OPEN, Gtk.ResponseType.OK))
 
-        if not self.folder:
-            self.folder = os.path.expanduser('~')
+        startfolder = self.folder if self.folder else os.path.expanduser('~')
 
         dialog.set_local_only(True)
-        dialog.set_current_folder(self.folder)
+        dialog.set_current_folder(startfolder)
         dialog.set_position(Gtk.WindowPosition.MOUSE)
         dialog.set_default_response(Gtk.ResponseType.OK)
  
@@ -126,6 +125,7 @@ class QuickMove(GObject.GObject, Eog.WindowActivatable):
             self.folder = dialog.get_filename()
             tb = self.window.get_titlebar()
             tb.set_subtitle("Target: "+self.folder)
+            logger.debug("New target folder: %s",self.folder)
 
         except:
             raise
