@@ -1,5 +1,6 @@
-# Edit Filename “Tags” plugin for Eye of GNOME
+# Quick Move plugin for Eye of GNOME
 # -*- encoding: utf-8 -*-
+# Modifications (C) 2018 Florian Echtler <floe@butterbrot.org>
 # Copyright (C) 2017 Andrew Chadwick <a.t.chadwick@gmail.com>
 #
 # This program is free software; you can redistribute it and/or
@@ -86,8 +87,6 @@ class QuickMove(GObject.GObject, Eog.WindowActivatable):
         except OSError:
             pass
 
-        logger.debug("Move %r → %r", src, dest)
-
         # If you rename the current image, the image is
         # re-inserted at its new aphabetical location, and the
         # UI's idea of the current image resets to position
@@ -97,9 +96,11 @@ class QuickMove(GObject.GObject, Eog.WindowActivatable):
         store = self.window.get_store()
         old_pos = store.get_pos_by_image(img)
         view = self.window.get_thumb_view()
+        logger.debug("Adjusting view position to %d", old_pos+1)
         img2 = store.get_image_by_pos(old_pos+1)
         view.set_current_image(img2, True)
 
+        logger.debug("Move %r → %r", src, dest)
         shutil.move(src, dest)
 
     def _new_activated_cb(self, action, param):
