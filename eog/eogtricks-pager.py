@@ -135,11 +135,11 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
         )
         self._setup_action(
             PAGE_BACKWARD_ACTION_NAME,
-            self._page_backward_activate_cb,
+            self._page_command_activate_cb,
         )
         self._setup_action(
             PAGE_FORWARD_ACTION_NAME,
-            self._page_forward_activate_cb,
+            self._page_command_activate_cb,
         )
         assert self._actions
         self._fit_page_min_action = fit_page_min_action
@@ -211,35 +211,59 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
         self._fit_page_min = True
         logger.debug("fit-page-min → ON")
 
-    def _page_backward_activate_cb(self, action, param):
-        view = self.window.get_view()
-        frac = self._get_scroll_frac(self._vscroll)
-        if view.get_zoom_mode() != Eog.ZoomMode.FREE:
-            logger.debug("go to the previous image (fitted)")
-            self._just_paged_direction = 0
-            self.window.activate_action("go-previous", None)
-        elif (frac is not None) and (frac > 0):
-            logger.debug("go back by a page, within the current image")
-            self._scroll_by_pages(self._vscroll, -PAGE_SCROLL_FRACTION)
-        else:
-            logger.debug("go to the end of the previous image")
-            self._just_paged_direction = -1
-            self.window.activate_action("go-previous", None)
+    def _page_command_activate_cb(self, action, param):
+        """Handle the user commands to page either backward or forward.
 
-    def _page_forward_activate_cb(self, action, param):
-        view = self.window.get_view()
-        frac = self._get_scroll_frac(self._vscroll)
-        if view.get_zoom_mode() != Eog.ZoomMode.FREE:
-            logger.debug("go to the next image (fitted)")
-            self._just_paged_direction = 0
-            self.window.activate_action("go-next", None)
-        elif (frac is not None) and (frac < 1.0):
-            logger.debug("go forward a page, within the current image")
-            self._scroll_by_pages(self._vscroll, PAGE_SCROLL_FRACTION)
+        The page forward/backward code code works by inspecting
+        scrollbars, modifying their inderlying adjustment values, and
+        sometimes causing eog to move on to the next or previous image.
+
+        """
+
+        # Decide the direction, limits, and a secondary action to invoke
+        # based on the action that was activated.
+        action_name = action.get_name()
+        if action_name == PAGE_FORWARD_ACTION_NAME:
+            sign = 1
+            limit = 0.99
+            within_limit = limit.__gt__
+            go_action_name = "go-next"
+        elif action_name == PAGE_BACKWARD_ACTION_NAME:
+            sign = -1
+            limit = 0.01
+            within_limit = limit.__lt__
+            go_action_name = "go-previous"
         else:
-            logger.debug("go to the start of the next image")
-            self._just_paged_direction = 1
-            self.window.activate_action("go-next", None)
+            raise ValueError("Unexpected pager action %r" % action_name)
+
+        # Decide which scrollbar. This code uses the scrollbar
+        # visibility state as a proxy for "has the image been zoomed to
+        # less that the size of the screen (in a particular dimension)?
+        #
+        # TODO: switch between vertical and horizontal scrollbars
+        # depending on whether it's fit-width or fit-height.
+
+        view = self.window.get_view()
+        sb = self._vscroll
+        sb_visible = view.scrollbars_visible() and sb.get_visible()
+        sb_frac = self._get_scroll_frac(sb)
+
+        # Move by a screenful, or progress to the next or previous
+        # image. Sometimes that means going to a specific end of the
+        # previous or next image.
+        if view.get_zoom_mode() != Eog.ZoomMode.FREE:
+            logger.debug("%s: %s (fitted)", action_name, go_action_name)
+            self._just_paged_direction = 0
+            self.window.activate_action(go_action_name, None)
+        elif sb_visible and (sb_frac is not None) and within_limit(sb_frac):
+            logger.debug("%s: scroll %s page within the current image",
+                         action_name, sign)
+            self._scroll_by_pages(sb, sign * PAGE_SCROLL_FRACTION)
+        else:
+            logger.debug("%s: %s and go to top/bottom",
+                         action_name, go_action_name)
+            self._just_paged_direction = sign
+            self.window.activate_action(go_action_name, None)
 
     # Fitting and scrolling:
 
@@ -282,7 +306,7 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
 
         if (image_size_other > image_size) and compensate:
             logger.debug("compensating for scroll bars...")
-            GLib.idle_add(self._fit_dimension, PageDimension.WIDTH, False)
+            GLib.idle_add(self._fit_dimension, dim, False)
         return False
 
     def _scroll_to(self, range, frac):
@@ -364,20 +388,25 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
     # Signal handlers:
 
     def _notify_image_cb(self, view, param):
+        """Fit width or scroll to ends when the image changes."""
         logger.debug("change of %r detected", param.name)
+
         if self._just_paged_direction != 0:
             if self._fit_page_min:
                 logger.debug("fitting new image to width")
                 self._fit_dimension(PageDimension.WIDTH)
+
         if self._just_paged_direction < 0:
             logger.debug("scrolling new image to end")
             self._scroll_to(self._vscroll, 1)
         elif self._just_paged_direction > 0:
             logger.debug("scrolling new image to start")
             self._scroll_to(self._vscroll, 0)
+
         self._just_paged_direction = 0
 
     def _notify_zoom_mode_cb(self, view, param):
+        """Changing the zoom mode turns off the min-dimension fitting."""
         view = self.window.get_view()
         mode = view.get_zoom_mode()
         if self._just_paged_direction == 0:
