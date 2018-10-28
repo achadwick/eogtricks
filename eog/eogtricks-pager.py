@@ -1,6 +1,6 @@
 # Pager plugin for Eye of GNOME.
 # -*- encoding: utf-8 -*-
-# Copyright (C) 2017 Andrew Chadwick <a.t.chadwick@gmail.com>
+# Copyright (C) 2018 Andrew Chadwick <a.t.chadwick@gmail.com>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
