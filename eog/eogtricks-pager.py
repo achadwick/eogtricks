@@ -47,6 +47,11 @@ class PageDimension (Enum):
     HEIGHT = 2
 
 
+class LayoutEnd (Enum):
+    START = 0
+    END = 1
+
+
 class PagerPlugin (GObject.Object, Eog.WindowActivatable):
     """Page backwards and forwards."""
 
@@ -131,7 +136,7 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
         assert not self._actions
         fit_page_min_action = self._setup_action(
             FIT_PAGE_MIN_ACTION_NAME,
-            self._fit_to_width_activate_cb,
+            self._fit_to_min_activate_cb,
         )
         self._setup_action(
             PAGE_BACKWARD_ACTION_NAME,
@@ -206,8 +211,20 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
 
     # Action callbacks:
 
-    def _fit_to_width_activate_cb(self, action, param):
-        self._fit_to_width(v=0.0)
+    def _fit_to_min_activate_cb(self, action, param):
+        fit_dim = self._get_image_fit_dimension()
+        if fit_dim == PageDimension.WIDTH:
+            adv_sb = self._vscroll
+            fit_sb = self._hscroll
+        else:
+            adv_sb = self._hscroll
+            fit_sb = self._vscroll
+
+        self._scroll_to(fit_sb, 0.5)
+        self._fit_dimension(fit_dim)
+        frac = self._get_end_fraction(adv_sb, LayoutEnd.START)
+        GLib.idle_add(self._scroll_to, adv_sb, frac)
+
         self._fit_page_min = True
         logger.debug("fit-page-min → ON")
 
@@ -220,33 +237,48 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
 
         """
 
-        # Decide the direction, limits, and a secondary action to invoke
-        # based on the action that was activated.
+        # Decide which scrollbar. This code uses the scrollbar
+        # visibility state as a proxy for "has the image been zoomed to
+        # less that the size of the screen (in a particular dimension)?
+
+        view = self.window.get_view()
+        dim = self._get_image_fit_dimension()
+        if dim == PageDimension.WIDTH:
+            sb = self._vscroll
+        else:
+            sb = self._hscroll
+        sb_visible = view.scrollbars_visible() and sb.get_visible()
+        sb_frac = self._get_scroll_frac(sb)
+
+        # Decide the "logical" pager direction, and a secondary action
+        # to invoke based on the action that was activated.
+
         action_name = action.get_name()
         if action_name == PAGE_FORWARD_ACTION_NAME:
-            sign = 1
-            limit = 0.99
-            within_limit = limit.__gt__
+            direction_sign = 1
             go_action_name = "go-next"
         elif action_name == PAGE_BACKWARD_ACTION_NAME:
-            sign = -1
-            limit = 0.01
-            within_limit = limit.__lt__
+            direction_sign = -1
             go_action_name = "go-previous"
         else:
             raise ValueError("Unexpected pager action %r" % action_name)
 
-        # Decide which scrollbar. This code uses the scrollbar
-        # visibility state as a proxy for "has the image been zoomed to
-        # less that the size of the screen (in a particular dimension)?
-        #
-        # TODO: switch between vertical and horizontal scrollbars
-        # depending on whether it's fit-width or fit-height.
+        # Also decide how to advance the scrollbars if needed. and what
+        # the limit on advancement should be. This accommodates RTL
+        # reading directions, but possibly it is only needed due to an
+        # eog bug or design decision.
 
-        view = self.window.get_view()
-        sb = self._vscroll
-        sb_visible = view.scrollbars_visible() and sb.get_visible()
-        sb_frac = self._get_scroll_frac(sb)
+        sb_adv_sign = direction_sign
+        if self._get_rtl() and (sb is self._hscroll):
+            sb_adv_sign *= -1
+
+        if sb_adv_sign == 1:
+            limit = 0.99
+            within_limit = limit.__gt__
+        else:
+            assert sb_adv_sign == -1
+            limit = 0.01
+            within_limit = limit.__lt__
 
         # Move by a screenful, or progress to the next or previous
         # image. Sometimes that means going to a specific end of the
@@ -257,20 +289,16 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
             self.window.activate_action(go_action_name, None)
         elif sb_visible and (sb_frac is not None) and within_limit(sb_frac):
             logger.debug("%s: scroll %s page within the current image",
-                         action_name, sign)
-            self._scroll_by_pages(sb, sign * PAGE_SCROLL_FRACTION)
+                         action_name, sb_adv_sign)
+
+            self._scroll_by_pages(sb, sb_adv_sign * PAGE_SCROLL_FRACTION)
         else:
             logger.debug("%s: %s and go to top/bottom",
                          action_name, go_action_name)
-            self._just_paged_direction = sign
+            self._just_paged_direction = direction_sign
             self.window.activate_action(go_action_name, None)
 
     # Fitting and scrolling:
-
-    def _fit_to_width(self, v=0.0):
-        self._scroll_to(self._hscroll, 0.5)
-        self._fit_dimension(PageDimension.WIDTH)
-        GLib.idle_add(self._scroll_to, self._vscroll, v)
 
     def _fit_dimension(self, dim, compensate=True):
         """Fits the image to the EogScrollView's width or height.
@@ -330,6 +358,23 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
 
         return False
 
+    def _get_end_fraction(self, sb, end):
+        """Return the fraction to scroll to for a logical end. RTL aware."""
+        frac = (end is LayoutEnd.END) and 1.0 or 0.0
+        if sb is self._hscroll and self._get_rtl():
+            # Should not have to perform this RTL compensation, surely?
+            # I guess EOG thinks it shows images, not text.
+            # Alternatively, could replace it with a user choice to just
+            # invert the natural direction.
+            frac = (end is LayoutEnd.START) and 1.0 or 0.0
+        return frac
+
+    def _get_rtl(self):
+        """Return whether an RTL writing direction is in effect."""
+        widget = self.window.get_view()
+        style = widget.get_style_context()
+        return (style.get_state() & Gtk.StateFlags.DIR_RTL)
+
     def _get_scroll_frac(self, range):
 
         v_adj = range.get_adjustment()
@@ -388,20 +433,30 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
     # Signal handlers:
 
     def _notify_image_cb(self, view, param):
-        """Fit width or scroll to ends when the image changes."""
+        """Fit the smallest edge, &/or scroll to ends when the image changes.
+        """
         logger.debug("change of %r detected", param.name)
+
+        fit_dim = self._get_image_fit_dimension()
 
         if self._just_paged_direction != 0:
             if self._fit_page_min:
-                logger.debug("fitting new image to width")
-                self._fit_dimension(PageDimension.WIDTH)
+                logger.debug("fitting new image to %r", fit_dim)
+                self._fit_dimension(fit_dim)
+
+        if fit_dim == PageDimension.WIDTH:
+            page_advance_sb = self._vscroll
+        else:
+            page_advance_sb = self._hscroll
 
         if self._just_paged_direction < 0:
             logger.debug("scrolling new image to end")
-            self._scroll_to(self._vscroll, 1)
+            frac = self._get_end_fraction(page_advance_sb, LayoutEnd.END)
+            self._scroll_to(page_advance_sb, frac)
         elif self._just_paged_direction > 0:
             logger.debug("scrolling new image to start")
-            self._scroll_to(self._vscroll, 0)
+            frac = self._get_end_fraction(page_advance_sb, LayoutEnd.START)
+            self._scroll_to(page_advance_sb, frac)
 
         self._just_paged_direction = 0
 
@@ -415,6 +470,21 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
                 self._fit_page_min = False
 
     # Helpers:
+
+    def _get_image_fit_dimension(self):
+        view = self.window.get_view()
+        image = view.get_image()
+        if image is None:
+            return PageDimension.WIDTH
+        assert (image.get_status() == Eog.ImageStatus.LOADED), \
+            "Image is not yet loaded, have to change assumptions here"
+        pixbuf = image.get_pixbuf()
+        w = pixbuf.get_width()
+        h = pixbuf.get_height()
+        if w < h:
+            return PageDimension.WIDTH
+        else:
+            return PageDimension.HEIGHT
 
     @property
     def _app(self):
