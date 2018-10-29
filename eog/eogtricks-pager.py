@@ -35,11 +35,20 @@ if os.environ.get("EOGTRICKS_DEBUG"):
     logging.basicConfig(level=logging.DEBUG)
 
 
-FIT_PAGE_MIN_ACTION_NAME = "zoom-fit-page-min"
+FIT_PAGE_WIDTH_ACTION_NAME = "zoom-fit-width"
+FIT_PAGE_HEIGHT_ACTION_NAME = "zoom-fit-height"
+FIT_PAGE_MIN_ACTION_NAME = "zoom-fit-min"
 PAGE_FORWARD_ACTION_NAME = "page-forward"
 PAGE_BACKWARD_ACTION_NAME = "page-backward"
 
 PAGE_SCROLL_FRACTION = 0.9  # of a page
+
+
+class PageFit (Enum):
+    NONE = 0
+    WIDTH = 1
+    HEIGHT = 2
+    MIN = 3
 
 
 class PageDimension (Enum):
@@ -67,14 +76,16 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
         self._vscroll = None
         self._old_accels = {}
         self._accels = {
-            "win." + FIT_PAGE_MIN_ACTION_NAME: ["w", "x", "h"],
+            "win." + FIT_PAGE_MIN_ACTION_NAME: ["x"],
+            "win." + FIT_PAGE_WIDTH_ACTION_NAME: ["w"],
+            "win." + FIT_PAGE_HEIGHT_ACTION_NAME: ["h"],
             "win." + PAGE_BACKWARD_ACTION_NAME: ["Prior", "b", "BackSpace"],
             "win." + PAGE_FORWARD_ACTION_NAME: ["Next", "space", "Return"],
         }
         self._signal_handlers = []
         self._just_paged_direction = 0
         self._actions = []
-        self._fit_page_min = False
+        self._fit_page_mode = PageFit.NONE
 
     # Plugin activation:
 
@@ -134,7 +145,15 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
 
         # Create and bind the actions.
         assert not self._actions
-        fit_page_min_action = self._setup_action(
+        self._setup_action(
+            FIT_PAGE_WIDTH_ACTION_NAME,
+            self._fit_to_width_activate_cb,
+        )
+        self._setup_action(
+            FIT_PAGE_HEIGHT_ACTION_NAME,
+            self._fit_to_height_activate_cb,
+        )
+        self._setup_action(
             FIT_PAGE_MIN_ACTION_NAME,
             self._fit_to_min_activate_cb,
         )
@@ -147,20 +166,6 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
             self._page_command_activate_cb,
         )
         assert self._actions
-        self._fit_page_min_action = fit_page_min_action
-
-        if False:
-            ref_action = self.window.lookup_action("toggle-zoom-fit")
-            if ref_action:
-                # flags = GObject.BindingFlags.INVERT_BOOLEAN
-                flags = GObject.BindingFlags.SYNC_CREATE
-                ref_action.bind_property(
-                    "enabled",
-                    fit_page_min_action, "enabled",
-                    flags,
-                )
-            else:
-                logger.warning("Cannot bind enabled state to toggle-zoom-fit.")
 
         # Keys
         self._setup_accels()
@@ -211,12 +216,41 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
 
     # Action callbacks:
 
+    def _fit_to_width_activate_cb(self, action, param):
+        """Fit to the image width now, and on each new image load."""
+        self._set_fit_mode(PageFit.WIDTH)
+
+    def _fit_to_height_activate_cb(self, action, param):
+        """Fit to the image width now, and on each new image load."""
+        self._set_fit_mode(PageFit.HEIGHT)
+
     def _fit_to_min_activate_cb(self, action, param):
-        fit_dim = self._get_image_fit_dimension()
+        """Fit to min(width, height) now, and on each new image load.
+
+        This mode may be a little confusing for some, since it can
+        alternate between "page goes down" and "page goes across".
+
+        """
+        self._set_fit_mode(PageFit.MIN)
+
+    def _set_fit_mode(self, fit_mode):
+        logger.debug("Setting fit mode to %r", fit_mode)
+        self._fit_page_mode = fit_mode
+
+        if fit_mode == PageFit.NONE:
+            return
+
+        if fit_mode == PageFit.WIDTH:
+            fit_dim = PageDimension.WIDTH
+        elif fit_mode == PageFit.HEIGHT:
+            fit_dim = PageDimension.HEIGHT
+        else:
+            fit_dim = self._get_image_fit_dimension()
+
         if fit_dim == PageDimension.WIDTH:
             adv_sb = self._vscroll
             fit_sb = self._hscroll
-        else:
+        elif fit_dim == PageDimension.HEIGHT:
             adv_sb = self._hscroll
             fit_sb = self._vscroll
 
@@ -224,9 +258,6 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
         self._fit_dimension(fit_dim)
         frac = self._get_end_fraction(adv_sb, LayoutEnd.START)
         GLib.idle_add(self._scroll_to, adv_sb, frac)
-
-        self._fit_page_min = True
-        logger.debug("fit-page-min → ON")
 
     def _page_command_activate_cb(self, action, param):
         """Handle the user commands to page either backward or forward.
@@ -241,12 +272,19 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
         # visibility state as a proxy for "has the image been zoomed to
         # less that the size of the screen (in a particular dimension)?
 
-        view = self.window.get_view()
-        dim = self._get_image_fit_dimension()
-        if dim == PageDimension.WIDTH:
+        fit_dim = PageDimension.WIDTH
+        if self._fit_page_mode == PageFit.MIN:
+            fit_dim = self._get_image_fit_dimension()
+        elif self._fit_page_mode == PageFit.WIDTH:
+            fit_dim = PageDimension.WIDTH
+        elif self._fit_page_mode == PageFit.HEIGHT:
+            fit_dim = PageDimension.HEIGHT
+
+        if fit_dim == PageDimension.WIDTH:
             sb = self._vscroll
         else:
             sb = self._hscroll
+        view = self.window.get_view()
         sb_visible = view.scrollbars_visible() and sb.get_visible()
         sb_frac = self._get_scroll_frac(sb)
 
@@ -437,12 +475,19 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
         """
         logger.debug("change of %r detected", param.name)
 
-        fit_dim = self._get_image_fit_dimension()
+        fit_dim = None
+        if self._fit_page_mode == PageFit.MIN:
+            fit_dim = self._get_image_fit_dimension()
+        elif self._fit_page_mode == PageFit.WIDTH:
+            fit_dim = PageDimension.WIDTH
+        elif self._fit_page_mode == PageFit.HEIGHT:
+            fit_dim = PageDimension.HEIGHT
+        if fit_dim is None:
+            return
 
         if self._just_paged_direction != 0:
-            if self._fit_page_min:
-                logger.debug("fitting new image to %r", fit_dim)
-                self._fit_dimension(fit_dim)
+            logger.debug("fitting new image to %r", fit_dim)
+            self._fit_dimension(fit_dim)
 
         if fit_dim == PageDimension.WIDTH:
             page_advance_sb = self._vscroll
@@ -461,13 +506,17 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
         self._just_paged_direction = 0
 
     def _notify_zoom_mode_cb(self, view, param):
-        """Changing the zoom mode turns off the min-dimension fitting."""
+        """Changing the zoom mode turns off auto width/height fitting."""
+        if self._just_paged_direction != 0:
+            return
+        if self._fit_page_mode == PageFit.NONE:
+            return
         view = self.window.get_view()
-        mode = view.get_zoom_mode()
-        if self._just_paged_direction == 0:
-            if self._fit_page_min and (mode != Eog.ZoomMode.FREE):
-                logger.debug("fit-page-min → off")
-                self._fit_page_min = False
+        zoom_mode = view.get_zoom_mode()
+        if zoom_mode == Eog.ZoomMode.FREE:
+            return
+        self._fit_page_mode = PageFit.NONE
+        logger.debug("fit-page-min → %r", self._fit_page_mode)
 
     # Helpers:
 
