@@ -342,38 +342,60 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
         """Fits the image to the EogScrollView's width or height.
 
         Note that this will turn on the other dimension's scroll bar if
-        the image is bigger in that dimension. This chnges the available
+        the image is bigger in that dimension. This changes the available
         screen size and thus the calculation that this function does.
         Therefore, this method normally requeues itself as a one-shot
         idle function if needed to compensate.
 
         """
-        view = self.window.get_view()
-        image = view.get_image()
-        pixbuf = image.get_pixbuf()
+        try:
+            logger.debug("_fit_dimension(%r, %r)", dim, compensate)
+            view = self.window.get_view()
+            image = view.get_image()
+            pixbuf = image.get_pixbuf()
 
-        if dim is PageDimension.WIDTH:
-            view_size = view.get_allocated_width()
-            scroll_size = self._vscroll.get_allocated_width()
-            image_size = pixbuf.get_width()
-            image_size_other = pixbuf.get_height()
-        elif dim is PageDimension.HEIGHT:
-            view_size = view.get_allocated_height()
-            scroll_size = self._hscroll.get_allocated_height()
-            image_size = pixbuf.get_height()
-            image_size_other = pixbuf.get_width()
-        else:
-            raise ValueError("Unknown dimension: %r" % (dim,))
-        new_zoom = (view_size - scroll_size) / image_size
+            if dim is PageDimension.WIDTH:
+                sb = self._vscroll
+                sb_size = sb.get_allocated_width()
+                view_size_advance = view.get_allocated_height()
+                view_size_fit = view.get_allocated_width()
+                image_size_advance = pixbuf.get_height()
+                image_size_fit = pixbuf.get_width()
+            elif dim is PageDimension.HEIGHT:
+                sb = self._hscroll
+                sb_size = sb.get_allocated_height()
+                view_size_advance = view.get_allocated_width()
+                view_size_fit = view.get_allocated_height()
+                image_size_advance = pixbuf.get_width()
+                image_size_fit = pixbuf.get_height()
+            else:
+                raise ValueError("Unknown dimension: %r" % (dim,))
 
-        if view.get_zoom_mode != Eog.ZoomMode.FREE:
-            view.set_zoom_mode(Eog.ZoomMode.FREE)
-        view.set_zoom(new_zoom)
+            # Don't apply the compensation the first time around.
+            if compensate:
+                sb_size = 0
 
-        if (image_size_other > image_size) and compensate:
-            logger.debug("compensating for scroll bars...")
-            GLib.idle_add(self._fit_dimension, dim, False)
-        return False
+            # There's also no need to apply the compensation now or in
+            # future if it won't ever need the advance scrollbar.
+            image_ratio = image_size_fit / image_size_advance
+            view_ratio = view_size_fit / view_size_advance
+            if image_ratio > view_ratio:
+                sb_size = 0
+                compensate = False
+
+            # Update the zoom and the zoom mode.
+            if view.get_zoom_mode != Eog.ZoomMode.FREE:
+                view.set_zoom_mode(Eog.ZoomMode.FREE)
+            new_zoom = (view_size_fit - sb_size) / image_size_fit
+            view.set_zoom(new_zoom)
+
+            # Re-queue, but just the once.
+            if compensate:
+                GLib.idle_add(self._fit_dimension, dim, False)
+        except Exception:
+            logger.exception("_fit_dimension() failed")
+        finally:
+            return False
 
     def _scroll_to(self, range, frac):
         """Scrolls a GtkRange to a given fraction of its whole.
