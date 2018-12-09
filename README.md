@@ -21,6 +21,11 @@ These are some custom plugins of mine for the Eye of GNOME Image viewer.
   Front and back keywords are separated with a “<samp>/</samp>”
   character.
 
+* **Quick Move to Folder** (eogtricks-quickmove):
+  Makes <kbd>M</kbd> move the current image to the folder chosen
+  by pressing the <kbd>N</kbd> earlier.
+  Contributed by Florian Echtler (@floe).
+
 ## Installation & management
 
 To install:
