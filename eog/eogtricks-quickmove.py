@@ -1,6 +1,6 @@
 # Quick Move plugin for Eye of GNOME
 # -*- encoding: utf-8 -*-
-# Modifications (C) 2018 Florian Echtler <floe@butterbrot.org>
+# Copyright (C) 2018 Florian Echtler <floe@butterbrot.org>
 # Copyright (C) 2017 Andrew Chadwick <a.t.chadwick@gmail.com>
 #
 # This program is free software; you can redistribute it and/or
