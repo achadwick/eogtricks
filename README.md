@@ -15,6 +15,18 @@ These are some custom plugins of mine for the Eye of GNOME Image viewer.
   This plugin turns off <kbd>Delete</kbd> entirely,
   and moves the trash action to <kbd>Shift+Delete</kbd>.
 
+* **Pager & Page Fit Modes** (eogtricks-pager):
+  Allows paging with common text pager keys.
+  Move forward across an image, or to the next image with
+  <kbd>Space</kbd>, <kbd>PgDown</kbd>, or <kbd>Return</kbd>.
+  Move backward across an image, or to the previous image with
+  <kbd>B</kbd>, <kbd>PgUp</kbd>, or <kbd>Backspace</kbd>.
+  This plugin also adds some improved fit modes that respect pages
+  Fit the page to the screen width (<kbd>W</kbd>), height (<kbd>H</kbd>),
+  or to its smallest dimension (<kbd>X</kbd>). The page advance
+  direction is updated automatically.
+  Supports RTL reading orders when fitted to the height.
+
 * **Edit Filename “Tags”** (eogtricks-bracket-tags):  
   Makes <kbd>#</kbd> append or prepend <samp>[tags like this]</samp>
   to the filename using a dialog.
