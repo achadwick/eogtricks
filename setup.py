@@ -3,7 +3,7 @@ import glob
 
 setup(
     name="eogtricks",
-    version="0.0.3",
+    version="0.1.0",
     description="Collected plugins for EOG (Eye of GNOME Image Viewer)",
     author="Andrew Chadwick",
     author_email="a.t.chadwick@gmail.com",
