@@ -92,7 +92,6 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
     def _setup_scroll_bars(self):
         """Find the scrollbars in the image view."""
         view = self.window.get_view()
-        logger.debug("View: %r", view)
         if self._hscroll and self._vscroll:
             return
         for w in self._walk(view):
@@ -443,21 +442,17 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
         lower = v_adj.get_lower()
         upper = v_adj.get_upper()
         page_size = v_adj.get_page_size()
-        logger.debug(
-            "V=%r (L=%r, U=%r, P=%r)",
-            value,
-            lower, upper,
-            page_size,
-        )
+        logger.debug("_get_scroll_frac: V=%r (L=%r, U=%r, P=%r)",
+                     value, lower, upper, page_size)
 
         if upper <= lower:
-            logger.debug("frac=None (weird initial state)")
+            logger.debug("_get_scroll_frac: frac=None (weird initial state)")
             return None  # initial scrollbar state...
 
         at_end = ((value + page_size) >= upper)
         at_start = (value <= lower)
         if at_end and at_start:
-            logger.debug("frac=None (image <= screen)")
+            logger.debug("_get_scroll_frac: frac=None (image <= screen)")
             return None  # image is screen-sized or smaller
 
         bottom = lower
@@ -465,9 +460,9 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
 
         frac = (value - bottom) / (top - bottom)
 
-        logger.debug("frac=%0.2f (calculated)", frac)
+        logger.debug("_get_scroll_frac: frac=%0.2f (calculated)", frac)
         frac = min(1.0, max(0.0, float(frac)))
-        logger.debug("frac=%0.2f (clamped)", frac)
+        logger.debug("_get_scroll_frac: frac=%0.2f (clamped)", frac)
         return frac
 
     def _scroll_by_pages(self, range, n):
@@ -495,7 +490,7 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
     def _notify_image_cb(self, view, param):
         """Fit the smallest edge, &/or scroll to ends when the image changes.
         """
-        logger.debug("change of %r detected", param.name)
+        logger.debug("_notify_image_cb: change of %r detected", param.name)
 
         fit_dim = None
         if self._fit_page_mode == PageFit.MIN:
@@ -508,7 +503,7 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
             return
 
         if self._just_paged_direction != 0:
-            logger.debug("fitting new image to %r", fit_dim)
+            logger.debug("_notify_image_cb: fitting new image to %r", fit_dim)
             self._fit_dimension(fit_dim)
 
         if fit_dim == PageDimension.WIDTH:
@@ -517,11 +512,11 @@ class PagerPlugin (GObject.Object, Eog.WindowActivatable):
             page_advance_sb = self._hscroll
 
         if self._just_paged_direction < 0:
-            logger.debug("scrolling new image to end")
+            logger.debug("_notify_image_cb: scrolling new image to end")
             frac = self._get_end_fraction(page_advance_sb, LayoutEnd.END)
             self._scroll_to(page_advance_sb, frac)
         elif self._just_paged_direction > 0:
-            logger.debug("scrolling new image to start")
+            logger.debug("_notify_image_cb: scrolling new image to start")
             frac = self._get_end_fraction(page_advance_sb, LayoutEnd.START)
             self._scroll_to(page_advance_sb, frac)
 
