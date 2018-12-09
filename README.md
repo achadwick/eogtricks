@@ -33,6 +33,10 @@ Other management commands:
     pip3 install --upgrade .
     pip3 uninstall eogtricks
 
+If you need to install for a particular python version:
+
+    python3.7 -m pip install --verbose .
+
 ## Testing
 
     EOGTRICKS_DEBUG=1 eog
