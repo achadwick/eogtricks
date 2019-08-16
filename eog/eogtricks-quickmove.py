@@ -103,6 +103,7 @@ class QuickMove(GObject.GObject, Eog.WindowActivatable):
         logger.debug("Adjusting view position to %d", old_pos+1)
         img2 = store.get_image_by_pos(old_pos+1)
         view.set_current_image(img2, True)
+        store.remove_image(img)
 
         logger.debug("Move %r → %r", src, dest)
         shutil.move(src, dest)
